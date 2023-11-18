@@ -6,45 +6,147 @@ import { ChartRenderer } from "./chart_renderer/chart_renderer"
 import { loadJS } from "@web/core/assets"
 import { useService } from "@web/core/utils/hooks"
 const { Component, onWillStart, useRef, onMounted, useState } = owl
+import { getColor } from "@web/views/graph/colors"
+// old version correction
+import { browser } from "@web/core/browser/browser"
+import { routeToUrl } from "@web/core/browser/router_service"
 
 export class OwlSalesDashboard extends Component {
     // top product
     async getTopProducts(){
-        const data = await this.orm.readGroup("sale.report", [], ['product_id', 'price_total'], ['product_id'])
-        console.log(data)
+        let domain = [['state', 'in', ['draft', 'sale', 'done']]]
+        if (this.state.period > 0){
+            domain.push(['date','>', this.state.current_date])
+        }        
+        // const data = await this.orm.readGroup("sale.report", [], ['product_id', 'price_total'], ['product_id'])
+        // limit
+        const data = await this.orm.readGroup("sale.report", domain, ['product_id', 'price_total'], ['product_id'], {limit:5, orderby:"price_total DESC"})
+        // console.log(data)
 
         this.state.topProducts = {
             
             data: {
-                labels: [
-                    'Red',
-                    'Blue',
-                    'Yellow'
-                  ],
+                labels: data.map(d => d.product_id[1]),
                   datasets: [
                   {
-                    label: 'My First Dataset',
-                    data: [300, 50, 100],
-                    hoverOffset: 4
+                    label: 'Total',
+                    data:  data.map(d => d.price_total),
+                    hoverOffset: 4,
+                    backgroundColor: data.map((_, index) => getColor(index)),
                   },{
-                    label: 'My Second Dataset',
-                    data: [100, 70, 150],
-                    hoverOffset: 4
+                    label: 'Count',
+                    data: data.map(d => d.product_id_count),
+                    hoverOffset: 4,
+                    backgroundColor: data.map((_, index) => getColor(index)),
                   }]
               }
         }
     }
     // top sales people
-    getTopSalesPeople(){
-        this.state.topSalesPeople = {}
+    async getTopSalesPeople(){
+        let domain = [['state', 'in', ['draft', 'sale', 'done']]]
+        if (this.state.period > 0){
+            domain.push(['date','>', this.state.current_date])
+        }        
+        // const data = await this.orm.readGroup("sale.report", [], ['product_id', 'price_total'], ['product_id'])
+        // limit
+        const data = await this.orm.readGroup("sale.report", domain, ['user_id', 'price_total'], ['user_id'], {limit:5, orderby:"price_total DESC"})
+        // console.log(data)
+
+        this.state.topSalesPeople = {
+            
+            data: {
+                labels: data.map(d => d.user_id[1]),
+                  datasets: [
+                  {
+                    label: 'Total',
+                    data:  data.map(d => d.price_total),
+                    hoverOffset: 4,
+                    backgroundColor: data.map((_, index) => getColor(index)),
+                  }]
+              }
+        }
+
     }
     // monthle sales
-    getMonthlySales(){
-        this.state.monthlySales = {}
+    async getMonthlySales(){
+        let domain = [['state', 'in', ['draft', 'sent', 'sale', 'done']]]
+        if (this.state.period > 0){
+            domain.push(['date','>', this.state.current_date])
+        }        
+        // const data = await this.orm.readGroup("sale.report", [], ['product_id', 'price_total'], ['product_id'])
+        // limit
+        const data = await this.orm.readGroup("sale.report", domain, ['date', 'state', 'price_total'], ['date', 'state'], {orderby:"date", lazy: false})
+        console.log(data)
+
+        this.state.monthlySales = {
+            
+            data: {
+                labels: [... new Set(data.map(d => d.date))],
+                  datasets: [
+                  {
+                    label: 'Quotation',
+                    data:  data.filter(d => d.state == 'draft' || d.state == 'sent').map(d => d.price_total),
+                    hoverOffset: 4,
+                    backgroundColor: "red",
+                  },{
+                    label: 'Count',
+                    data:  data.filter(d => ['sale', 'done'].includes(d.state)).map(d => d.price_total),
+                    hoverOffset: 4,
+                    backgroundColor: "green",
+                  }]
+              }
+        }
     }
     // partner orders
-    getPartnerOrders(){
-        this.state.partnerOrders = {}
+    async getPartnerOrders(){
+        let domain = [['state', 'in', ['draft', 'sent', 'sale', 'done']]]
+        if (this.state.period > 0){
+            domain.push(['date','>', this.state.current_date])
+        }        
+        // const data = await this.orm.readGroup("sale.report", [], ['product_id', 'price_total'], ['product_id'])
+        // limit
+        const data = await this.orm.readGroup("sale.report", domain, ['partner_id', 'price_total', 'product_uom_qty'], 
+        ['partner_id'], {orderby:"partner_id", lazy: false})
+        console.log(data)
+
+        this.state.partnerOrders = {
+            
+            data: {
+                labels: data.map(d => d.partner_id[1]),
+                  datasets: [
+                  {
+                    label: 'Total amount',
+                    data:  data.map(d => d.price_total),
+                    hoverOffset: 4,
+                    backgroundColor: "orange",
+                    yAxisID : 'Total',
+                    order: 1,
+                  },{
+                    label: 'Total quat',
+                    data:  data.map(d => d.price_total*0.8),
+                    hoverOffset: 4,
+                    backgroundColor: "blue",
+                    yAxisID : 'Total',
+                    order: 1,
+                  },{
+                    label: 'Ordered qty',
+                    data:  data.map(d => d.product_uom_qty),
+                    hoverOffset: 4,
+                    backgroundColor: "blue",
+                    type:"line",
+                    borderColor: "blue",
+                    yAxisID : 'Qty',
+                    order: 0,
+                  }]
+              },
+              scales: {
+                Qty:{
+                    position: 'right',
+                }
+              }
+        }        
+        
     }
 
     setup(){
@@ -58,15 +160,26 @@ export class OwlSalesDashboard extends Component {
         this.orm = useService("orm")
         this.actionService = useService("action")
 
+        // old version correction
+        const old_chartjs = document.querySelector('script[src="/web/static/lib/Chart/Chart.js"]')
+        const router = useService("router")
+        if (old_chartjs){
+            let { search, hash} = router.current
+            search.old_chartjs = old_chartjs != null ? "0":"1"
+            hash.action = 525
+            browser.location.href = browser.location.origin + routeToUrl(router.current)
+        }
+        // old version correction end
+
         onWillStart(async ()=>{
             this.getDates()
             await this.getQuotations()
             await this.getOrders() 
 
             await this.getTopProducts()
-            this.getTopSalesPeople()
-            this.getMonthlySales()
-            this.getPartnerOrders()
+            await this.getTopSalesPeople()
+            await this.getMonthlySales()
+            await this.getPartnerOrders()
         })
     }
 
@@ -74,6 +187,11 @@ export class OwlSalesDashboard extends Component {
         this.getDates()
         await this.getQuotations()
         await this.getOrders()
+
+        await this.getTopProducts()
+        await this.getTopSalesPeople()
+        await this.getMonthlySales()
+        await this.getPartnerOrders()
     }
 
     getDates(){
